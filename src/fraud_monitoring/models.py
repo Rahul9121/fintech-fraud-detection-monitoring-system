@@ -49,10 +49,10 @@ def build_classifier_pipeline() -> Pipeline:
 
 def build_anomaly_pipeline() -> Pipeline:
     anomaly_model = IsolationForest(
-        n_estimators=250,
+        n_estimators=120,
         contamination=0.02,
         random_state=RANDOM_SEED,
-        n_jobs=-1,
+        n_jobs=1,
     )
     return Pipeline(steps=[("scaler", StandardScaler()), ("anomaly", anomaly_model)])
 

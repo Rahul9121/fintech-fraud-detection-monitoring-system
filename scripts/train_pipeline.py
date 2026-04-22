@@ -18,7 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sample-size",
         type=int,
-        default=50_000,
+        default=12_000,
         help="Number of transactions to sample from the public dataset.",
     )
     parser.add_argument(

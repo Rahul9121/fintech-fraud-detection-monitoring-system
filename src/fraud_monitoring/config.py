@@ -17,7 +17,9 @@ MODEL_METADATA_PATH = ARTIFACTS_DIR / "model_metadata.json"
 PIPELINE_SUMMARY_PATH = ARTIFACTS_DIR / "pipeline_summary.json"
 
 DATA_URL = "https://storage.googleapis.com/download.tensorflow.org/data/creditcard.csv"
-DEFAULT_SAMPLE_SIZE = 50_000
+DEFAULT_SAMPLE_SIZE = 12_000
+DOWNLOAD_TIMEOUT_SECONDS = 30
+SYNTHETIC_DATASET_ROWS = 30_000
 RANDOM_SEED = 42
 
 

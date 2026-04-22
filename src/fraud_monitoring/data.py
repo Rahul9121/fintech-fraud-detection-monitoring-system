@@ -2,16 +2,76 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from urllib.request import urlopen
 
-from .config import DATA_URL, RANDOM_SEED, RAW_DATA_PATH
+from .config import (
+    DATA_URL,
+    DOWNLOAD_TIMEOUT_SECONDS,
+    RANDOM_SEED,
+    RAW_DATA_PATH,
+    SYNTHETIC_DATASET_ROWS,
+)
+
+REQUIRED_SOURCE_COLUMNS = {"Time", "Amount", "Class"}
+
+
+def _is_valid_source_dataset(dataset: pd.DataFrame) -> bool:
+    return REQUIRED_SOURCE_COLUMNS.issubset(dataset.columns)
+
+
+def _download_public_dataset(timeout_seconds: int = DOWNLOAD_TIMEOUT_SECONDS) -> pd.DataFrame:
+    with urlopen(DATA_URL, timeout=timeout_seconds) as response:
+        return pd.read_csv(response)
+
+
+def _build_synthetic_fallback_dataset(
+    rows: int = SYNTHETIC_DATASET_ROWS,
+    fraud_ratio: float = 0.02,
+    seed: int = RANDOM_SEED,
+) -> pd.DataFrame:
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+
+    rng = np.random.default_rng(seed)
+    fraud_count = max(int(rows * fraud_ratio), 1)
+    labels = np.zeros(rows, dtype=int)
+    labels[:fraud_count] = 1
+    rng.shuffle(labels)
+
+    time_values = np.sort(rng.integers(0, 172_800, size=rows))
+    base_amount = rng.gamma(shape=2.2, scale=70.0, size=rows)
+    fraud_bump = labels * rng.gamma(shape=2.4, scale=120.0, size=rows)
+    amounts = np.clip(base_amount + fraud_bump, 0.1, None)
+
+    frame: dict[str, np.ndarray] = {
+        "Time": time_values.astype(int),
+        "Amount": amounts.round(2),
+        "Class": labels.astype(int),
+    }
+    for index in range(1, 29):
+        noise = rng.normal(loc=0.0, scale=1.0, size=rows)
+        fraud_shift = labels * rng.normal(loc=0.25, scale=0.5, size=rows)
+        frame[f"V{index}"] = noise + fraud_shift
+
+    return pd.DataFrame(frame)
 
 
 def load_public_dataset(force_download: bool = False) -> pd.DataFrame:
     if force_download and RAW_DATA_PATH.exists():
         RAW_DATA_PATH.unlink()
     if RAW_DATA_PATH.exists():
-        return pd.read_csv(RAW_DATA_PATH)
-    dataset = pd.read_csv(DATA_URL)
+        cached_dataset = pd.read_csv(RAW_DATA_PATH)
+        if _is_valid_source_dataset(cached_dataset):
+            return cached_dataset
+        RAW_DATA_PATH.unlink()
+
+    try:
+        dataset = _download_public_dataset()
+    except Exception:
+        dataset = _build_synthetic_fallback_dataset()
+
+    if not _is_valid_source_dataset(dataset):
+        dataset = _build_synthetic_fallback_dataset()
     dataset.to_csv(RAW_DATA_PATH, index=False)
     return dataset
 

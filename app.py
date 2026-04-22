@@ -45,8 +45,13 @@ def _load_monitoring_data() -> pd.DataFrame:
 
 
 def _run_bootstrap(sample_size: int) -> None:
-    with st.spinner("Preparing dataset, training models, and building monitoring database..."):
-        summary = run_training_pipeline(sample_size=sample_size)
+    try:
+        with st.spinner("Preparing dataset, training models, and building monitoring database..."):
+            summary = run_training_pipeline(sample_size=sample_size)
+    except Exception as exc:
+        st.error("Bootstrap failed. Try a smaller sample size (for example 8,000).")
+        st.exception(exc)
+        return
     st.success("Bootstrap complete.")
     st.json(summary)
     _load_monitoring_data.clear()
@@ -55,12 +60,15 @@ def _run_bootstrap(sample_size: int) -> None:
 
 if not _artifacts_ready():
     st.warning("Model/database artifacts are missing. Build baseline artifacts first.")
+    st.caption(
+        "For Streamlit Cloud, start with 8,000-20,000 rows for faster first-time setup."
+    )
     bootstrap_sample_size = st.slider(
         "Bootstrap sample size",
-        min_value=5_000,
-        max_value=120_000,
-        value=50_000,
-        step=5_000,
+        min_value=2_000,
+        max_value=40_000,
+        value=12_000,
+        step=2_000,
     )
     if st.button("Build demo artifacts", type="primary"):
         _run_bootstrap(sample_size=bootstrap_sample_size)
