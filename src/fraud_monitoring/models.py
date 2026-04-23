@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import pickle
 from dataclasses import dataclass
+from pathlib import Path
 
-import joblib
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
@@ -15,6 +16,10 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from .config import ANOMALY_PATH, CLASSIFIER_PATH, METRICS_PATH, MODEL_METADATA_PATH, RANDOM_SEED
 from .features import CATEGORICAL_FEATURES, NUMERIC_FEATURES
+try:
+    import joblib
+except ModuleNotFoundError:
+    joblib = None
 
 
 @dataclass
@@ -104,9 +109,30 @@ def train_models(
     )
 
 
+def _dump_artifact(model: Pipeline, artifact_path: Path) -> None:
+    if joblib is not None:
+        joblib.dump(model, artifact_path)
+        return
+    with artifact_path.open("wb") as artifact_file:
+        pickle.dump(model, artifact_file, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def _load_artifact(artifact_path: Path) -> Pipeline:
+    if joblib is not None:
+        return joblib.load(artifact_path)
+    try:
+        with artifact_path.open("rb") as artifact_file:
+            return pickle.load(artifact_file)
+    except Exception as exc:
+        raise RuntimeError(
+            "Unable to load model artifacts without joblib. "
+            "Rebuild artifacts from the app bootstrap or install joblib."
+        ) from exc
+
+
 def save_artifacts(bundle: TrainedModelBundle) -> None:
-    joblib.dump(bundle.classifier, CLASSIFIER_PATH)
-    joblib.dump(bundle.anomaly_detector, ANOMALY_PATH)
+    _dump_artifact(bundle.classifier, CLASSIFIER_PATH)
+    _dump_artifact(bundle.anomaly_detector, ANOMALY_PATH)
 
     metadata = {
         "numeric_features": NUMERIC_FEATURES,
@@ -117,7 +143,7 @@ def save_artifacts(bundle: TrainedModelBundle) -> None:
 
 
 def load_artifacts() -> tuple[Pipeline, Pipeline]:
-    classifier = joblib.load(CLASSIFIER_PATH)
-    anomaly_detector = joblib.load(ANOMALY_PATH)
+    classifier = _load_artifact(CLASSIFIER_PATH)
+    anomaly_detector = _load_artifact(ANOMALY_PATH)
     return classifier, anomaly_detector
 
