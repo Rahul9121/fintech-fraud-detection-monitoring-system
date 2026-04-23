@@ -105,6 +105,7 @@ Storage notes:
 - If Cloud shows app startup delays, reduce bootstrap size to `8000`.
 - If the public dataset mirror is temporarily unavailable, the app now falls back to a synthetic dataset automatically so deployment still succeeds.
 - After successful bootstrap, the app now reruns automatically and loads dashboard KPIs/charts.
+- If logs stay at dependency install steps (for example around `Resolved ... packages`) and the app is stuck in **"Your app is in the oven"**, delete and redeploy the app with Python `3.12` in Advanced settings. Streamlit Cloud does not let you change Python version in-place for an already deployed app.
 
 ## CI
 GitHub Actions workflow (`.github/workflows/ci.yml`) runs:

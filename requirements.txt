@@ -1,6 +1,6 @@
-numpy==1.26.4
-pandas==2.2.3
-scikit-learn==1.5.2
-streamlit==1.41.1
-joblib>=1.5.3
-pytest==8.3.4
+numpy>=1.26.4,<3
+pandas>=2.2.3,<3
+scikit-learn>=1.5.2,<2
+streamlit>=1.41.1,<2
+joblib>=1.5.3,<2
+pytest>=8.3.4,<9
