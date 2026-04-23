@@ -1,10 +1,24 @@
 from __future__ import annotations
+import os
+import tempfile
 
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "data"
-ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
+
+
+def _resolve_storage_root() -> Path:
+    configured_root = os.getenv("FRAUD_MONITORING_STORAGE_DIR")
+    if configured_root:
+        return Path(configured_root).expanduser().resolve()
+    if os.access(PROJECT_ROOT, os.W_OK):
+        return PROJECT_ROOT
+    return Path(tempfile.gettempdir()) / "fintech_fraud_monitoring"
+
+
+STORAGE_ROOT = _resolve_storage_root()
+DATA_DIR = STORAGE_ROOT / "data"
+ARTIFACTS_DIR = STORAGE_ROOT / "artifacts"
 
 RAW_DATA_PATH = DATA_DIR / "creditcard.csv"
 PROCESSED_TRANSACTIONS_PATH = DATA_DIR / "processed_transactions.csv"

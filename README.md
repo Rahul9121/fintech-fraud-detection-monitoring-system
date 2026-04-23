@@ -87,18 +87,24 @@ docker run --rm -p 8501:8501 fintech-fraud-monitor
 
 Then open `http://localhost:8501`.
 
-## Streamlit Cloud deployment idea
+## Streamlit Cloud deployment
 1) Push this repo to GitHub.
 2) In Streamlit Community Cloud, create app from your repo.
-3) Use:
+3) In **Advanced settings**, choose Python `3.11` or `3.12` (recommended for this stack).
+4) Use:
    - Branch: `main`
    - Main file path: `app.py`
-4) First run: click **Build demo artifacts** and start with `12000` rows (or `8000` for faster setup).
+5) First run: click **Build demo artifacts** and start with `8000` rows.
+
+Storage notes:
+- Artifacts/data are written under the project directory when writable.
+- If the project directory is not writable (common in some hosted environments), the app automatically falls back to a temp folder.
+- You can override storage location with environment variable `FRAUD_MONITORING_STORAGE_DIR`.
 
 ## Streamlit troubleshooting (important)
 - If Cloud shows app startup delays, reduce bootstrap size to `8000`.
 - If the public dataset mirror is temporarily unavailable, the app now falls back to a synthetic dataset automatically so deployment still succeeds.
-- After successful bootstrap, refresh the page once to load dashboard KPIs/charts.
+- After successful bootstrap, the app now reruns automatically and loads dashboard KPIs/charts.
 
 ## CI
 GitHub Actions workflow (`.github/workflows/ci.yml`) runs:

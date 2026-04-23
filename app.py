@@ -14,13 +14,7 @@ if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
 from fraud_monitoring.config import ANOMALY_PATH, CLASSIFIER_PATH, DB_PATH
-from fraud_monitoring.dashboard_queries import (
-    get_channel_success_rates,
-    get_fraud_trend,
-    get_overview_kpis,
-    get_recent_alerts,
-    get_risk_distribution,
-)
+from fraud_monitoring.dashboard_queries import get_overview_kpis
 from fraud_monitoring.database import append_live_prediction, load_monitoring_frame
 from fraud_monitoring.hybrid import HybridFraudDetector
 from fraud_monitoring.pipeline import run_training_pipeline
@@ -44,18 +38,117 @@ def _load_monitoring_data() -> pd.DataFrame:
     return load_monitoring_frame()
 
 
-def _run_bootstrap(sample_size: int) -> None:
+def _build_trend_frame(filtered_data: pd.DataFrame) -> pd.DataFrame:
+    if filtered_data.empty:
+        return pd.DataFrame()
+
+    trend_frame = (
+        filtered_data.assign(
+            is_fraud_filled=filtered_data["is_fraud"].fillna(0).astype(float),
+            is_success_filled=filtered_data["is_success"].fillna(0).astype(float),
+            risk_score_filled=filtered_data["risk_score"].fillna(0).astype(float),
+        )
+        .groupby("transaction_date", as_index=False)
+        .agg(
+            total_transactions=("transaction_id", "count"),
+            fraud_transactions=("is_fraud_filled", "sum"),
+            success_rate_pct=("is_success_filled", "mean"),
+            avg_risk_score=("risk_score_filled", "mean"),
+        )
+        .sort_values("transaction_date")
+    )
+    trend_frame["fraud_transactions"] = trend_frame["fraud_transactions"].round().astype(int)
+    trend_frame["fraud_rate_pct"] = (
+        trend_frame["fraud_transactions"] / trend_frame["total_transactions"] * 100.0
+    )
+    trend_frame["success_rate_pct"] = trend_frame["success_rate_pct"] * 100.0
+    trend_frame[["fraud_rate_pct", "success_rate_pct", "avg_risk_score"]] = (
+        trend_frame[["fraud_rate_pct", "success_rate_pct", "avg_risk_score"]].round(3)
+    )
+    trend_frame = trend_frame.rename(columns={"transaction_date": "txn_date"})
+    trend_frame["txn_date"] = pd.to_datetime(trend_frame["txn_date"])
+    return trend_frame
+
+
+def _build_risk_distribution(filtered_data: pd.DataFrame) -> pd.DataFrame:
+    if filtered_data.empty:
+        return pd.DataFrame(columns=["risk_band", "transactions"])
+
+    risk_distribution = (
+        filtered_data["risk_band"]
+        .dropna()
+        .value_counts()
+        .rename_axis("risk_band")
+        .reset_index(name="transactions")
+    )
+    risk_order = {"low": 0, "medium": 1, "high": 2}
+    risk_distribution["risk_order"] = risk_distribution["risk_band"].map(risk_order).fillna(99)
+    risk_distribution = risk_distribution.sort_values(
+        ["risk_order", "transactions"],
+        ascending=[True, False],
+    )
+    return risk_distribution.drop(columns=["risk_order"]).reset_index(drop=True)
+
+
+def _build_channel_success_rates(filtered_data: pd.DataFrame) -> pd.DataFrame:
+    if filtered_data.empty:
+        return pd.DataFrame(columns=["channel", "transactions", "success_rate_pct", "avg_risk_score"])
+
+    channel_rates = (
+        filtered_data.assign(
+            is_success_filled=filtered_data["is_success"].fillna(0).astype(float),
+            risk_score_filled=filtered_data["risk_score"].fillna(0).astype(float),
+        )
+        .groupby("channel", as_index=False)
+        .agg(
+            transactions=("transaction_id", "count"),
+            success_rate_pct=("is_success_filled", "mean"),
+            avg_risk_score=("risk_score_filled", "mean"),
+        )
+        .sort_values("transactions", ascending=False)
+    )
+    channel_rates["success_rate_pct"] = (channel_rates["success_rate_pct"] * 100.0).round(3)
+    channel_rates["avg_risk_score"] = channel_rates["avg_risk_score"].round(3)
+    return channel_rates
+
+
+def _build_recent_alerts(filtered_data: pd.DataFrame, limit: int = 20) -> pd.DataFrame:
+    if filtered_data.empty:
+        return pd.DataFrame()
+
+    alert_columns = [
+        "transaction_id",
+        "transaction_timestamp",
+        "account_id",
+        "channel",
+        "merchant_category",
+        "Amount",
+        "risk_score",
+        "risk_band",
+        "decision",
+        "ml_probability",
+        "rule_score",
+        "rule_reasons",
+    ]
+    alerts = filtered_data.loc[filtered_data["risk_score"].fillna(0) >= 45, alert_columns].copy()
+    if alerts.empty:
+        return alerts
+    return alerts.sort_values("risk_score", ascending=False).head(limit).reset_index(drop=True)
+
+
+def _run_bootstrap(sample_size: int) -> bool:
     try:
         with st.spinner("Preparing dataset, training models, and building monitoring database..."):
             summary = run_training_pipeline(sample_size=sample_size)
     except Exception as exc:
         st.error("Bootstrap failed. Try a smaller sample size (for example 8,000).")
         st.exception(exc)
-        return
+        return False
     st.success("Bootstrap complete.")
     st.json(summary)
     _load_monitoring_data.clear()
     _load_detector.clear()
+    return True
 
 
 if not _artifacts_ready():
@@ -66,12 +159,13 @@ if not _artifacts_ready():
     bootstrap_sample_size = st.slider(
         "Bootstrap sample size",
         min_value=2_000,
-        max_value=40_000,
-        value=12_000,
+        max_value=30_000,
+        value=8_000,
         step=2_000,
     )
     if st.button("Build demo artifacts", type="primary"):
-        _run_bootstrap(sample_size=bootstrap_sample_size)
+        if _run_bootstrap(sample_size=bootstrap_sample_size):
+            st.rerun()
     st.stop()
 
 
@@ -150,9 +244,7 @@ st.caption(
     f"Success rate: {float(overview_row.get('success_rate_pct', 0.0)):.2f}%"
 )
 
-trend_frame = get_fraud_trend()
-if not trend_frame.empty:
-    trend_frame["txn_date"] = pd.to_datetime(trend_frame["txn_date"])
+trend_frame = _build_trend_frame(filtered_data)
 
 chart_left, chart_right = st.columns(2)
 
@@ -168,7 +260,7 @@ with chart_left:
 
 with chart_right:
     st.subheader("Risk-band distribution")
-    risk_distribution = get_risk_distribution()
+    risk_distribution = _build_risk_distribution(filtered_data)
     if risk_distribution.empty:
         st.info("No risk distribution data available.")
     else:
@@ -181,7 +273,7 @@ channel_perf_col, alert_col = st.columns(2)
 
 with channel_perf_col:
     st.subheader("Transaction success rate by channel")
-    channel_rates = get_channel_success_rates()
+    channel_rates = _build_channel_success_rates(filtered_data)
     if channel_rates.empty:
         st.info("No channel-level data available.")
     else:
@@ -189,7 +281,7 @@ with channel_perf_col:
 
 with alert_col:
     st.subheader("Top risk alerts")
-    recent_alerts = get_recent_alerts(limit=20)
+    recent_alerts = _build_recent_alerts(filtered_data, limit=20)
     if recent_alerts.empty:
         st.info("No alerts above threshold.")
     else:
