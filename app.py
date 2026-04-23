@@ -22,6 +22,11 @@ from fraud_monitoring.pipeline import run_training_pipeline
 st.set_page_config(page_title="Fintech Fraud Detection + Monitoring", layout="wide")
 st.title("Fintech Fraud Detection + Transaction Monitoring")
 st.caption("Hybrid system: rule-based heuristics + ML classifier + anomaly detection")
+st.caption("Made by Rahul Ega")
+st.caption(
+    "Dataset: Credit Card Fraud Detection (European card transactions) "
+    "from https://storage.googleapis.com/download.tensorflow.org/data/creditcard.csv"
+)
 
 
 def _artifacts_ready() -> bool:
